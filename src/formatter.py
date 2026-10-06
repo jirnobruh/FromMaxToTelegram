@@ -1,9 +1,9 @@
-"""
+﻿"""
 Message formatting and HTML escaping utilities for Telegram.
 """
 import html
 from typing import Optional
-from max_client.models import Attachment, Message
+from max_library.models import Attachment, Message
 
 
 def escape_html(text: Optional[str]) -> str:

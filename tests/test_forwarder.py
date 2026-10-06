@@ -1,10 +1,10 @@
-"""
+﻿"""
 Unit tests for MessageForwarder orchestration logic.
 """
 from unittest.mock import AsyncMock, MagicMock
 import pytest
-from max_client import MaxClient
-from max_client.models import Attachment, Message, MessageLink, User
+from max_library import MaxClient
+from max_library.models import Attachment, Message, MessageLink, User
 from src.cache import UserCache
 from src.config import BotConfig
 from src.forwarder import MessageForwarder

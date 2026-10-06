@@ -1,4 +1,4 @@
-"""
+﻿"""
 Main entrypoint and lifecycle coordinator for MAX to Telegram Bot.
 """
 import asyncio
@@ -12,8 +12,8 @@ from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
-from max_client import MaxClient, filters
-from max_client.models import Message
+from max_library import MaxClient, filters
+from max_library.models import Message
 from src.config import BotConfig
 from src.forwarder import MessageForwarder
 from src.logger import setup_logging
@@ -38,7 +38,7 @@ class BotApp:
             default=DefaultBotProperties(parse_mode=ParseMode.HTML),
         )
         self.forwarder = MessageForwarder(bot=self.bot, config=self.config)
-        self.max_client = MaxClient(
+        self.max_library = MaxClient(
             token=self.config.MAX_TOKEN,
             num_workers=self.config.MAX_WORKERS,
             auto_reconnect=True,
@@ -49,7 +49,7 @@ class BotApp:
         """Registers MAX event filters and callbacks."""
 
         # 1. On Connect / Reconnect
-        @self.max_client.on_connect
+        @self.max_library.on_connect
         async def on_connect(client: MaxClient):
             user_info = "Unknown"
             if client.me:
@@ -72,7 +72,7 @@ class BotApp:
         else:
             msg_filter = filters.is_not_removed()
 
-        @self.max_client.on_message(msg_filter)
+        @self.max_library.on_message(msg_filter)
         async def handle_message(client: MaxClient, message: Message):
             try:
                 await self.forwarder.forward_max_message(client, message)
@@ -85,7 +85,7 @@ class BotApp:
         logger.info("Starting MAX Forwarder Bot...")
 
         try:
-            await self.max_client.start()
+            await self.max_library.start()
             logger.info("MAX Forwarder Bot is running. Press Ctrl+C to stop.")
             await self._stop_event.wait()
         except asyncio.CancelledError:
@@ -99,7 +99,7 @@ class BotApp:
         self._stop_event.set()
 
         try:
-            await self.max_client.close()
+            await self.max_library.close()
         except Exception as e:
             logger.warning(f"Error closing max client: {e}")
 

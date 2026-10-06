@@ -1,4 +1,4 @@
-"""
+﻿"""
 Message forwarder service coordinating MAX messages into Telegram.
 """
 import asyncio
@@ -12,8 +12,8 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramNetworkError, TelegramRetryAfter, TelegramAPIError
 from aiogram.types import BufferedInputFile, InputMediaPhoto, URLInputFile
 
-from max_client import MaxClient
-from max_client.models import Attachment, Message
+from max_library import MaxClient
+from max_library.models import Attachment, Message
 from src.cache import UserCache
 from src.config import BotConfig
 from src.formatter import (
