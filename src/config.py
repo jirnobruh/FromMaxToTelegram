@@ -23,7 +23,7 @@ class BotConfig(BaseSettings):
 
     # MAX settings
     MAX_TOKEN: str = Field(description="MAX messenger auth token")
-    MAX_CHAT_IDS: list[str] = Field(default_factory=list, description="List of monitored MAX chat IDs")
+    MAX_CHAT_IDS: Union[list[str], str] = Field(default_factory=list, description="List of monitored MAX chat IDs")
 
     # Telegram settings
     TG_BOT_TOKEN: str = Field(description="Telegram Bot API Token")
