@@ -39,6 +39,11 @@ class BotConfig(BaseSettings):
     USER_CACHE_TTL: int = Field(default=3600, description="Cache TTL in seconds for user profile names")
     MAX_WORKERS: int = Field(default=4, description="Worker count for processing message push events")
 
+    # Logging settings
+    LOGS_DIR: str = Field(default="logs", description="Directory to store session log files")
+    MAX_LOGS_DIR_SIZE_MB: int = Field(default=1024, description="Max total size of logs directory in MB (1GB)")
+    MAX_LOG_FILE_SIZE_MB: int = Field(default=100, description="Max size of a single log chunk file in MB before rotation")
+
     @field_validator("MAX_CHAT_IDS", mode="before")
     @classmethod
     def _parse_max_chat_ids(cls, v: Any) -> list[str]:

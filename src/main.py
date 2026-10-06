@@ -16,12 +16,8 @@ from max_client import MaxClient, filters
 from max_client.models import Message
 from src.config import BotConfig
 from src.forwarder import MessageForwarder
+from src.logger import setup_logging
 
-# Configure structured logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
 logger = logging.getLogger("max-to-tg-bot")
 
 
@@ -30,7 +26,12 @@ class BotApp:
 
     def __init__(self, config: Optional[BotConfig] = None):
         self.config = config or BotConfig()
-        logging.getLogger().setLevel(self.config.LOG_LEVEL.upper())
+        self.session_log_path = setup_logging(
+            logs_dir=self.config.LOGS_DIR,
+            log_level=self.config.LOG_LEVEL,
+            max_dir_size_mb=self.config.MAX_LOGS_DIR_SIZE_MB,
+            max_file_size_mb=self.config.MAX_LOG_FILE_SIZE_MB,
+        )
 
         self.bot = Bot(
             token=self.config.TG_BOT_TOKEN,
