@@ -147,7 +147,7 @@ async def test_forward_unhandled_file_attachment(forwarder, mock_client):
                 "_type": "FILE",
                 "name": "README.md",
                 "size": 1360,
-                "fileId": 3616615111,
+                "fileId": 998877,
             }
         ],
     }
