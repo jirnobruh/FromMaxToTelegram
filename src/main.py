@@ -1,18 +1,142 @@
+"""
+Main entrypoint and lifecycle coordinator for MAX to Telegram Bot.
+"""
 import asyncio
+import html
 import logging
-from max_client import __version__ as max_client_version
+import signal
+import sys
+from typing import Optional
 
+from aiogram import Bot
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+
+from max_client import MaxClient, filters
+from max_client.models import Message
+from src.config import BotConfig
+from src.forwarder import MessageForwarder
+
+# Configure structured logging
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("max-to-tg-bot")
 
+
+class BotApp:
+    """Manages the full lifecycle of MaxClient and Telegram Bot."""
+
+    def __init__(self, config: Optional[BotConfig] = None):
+        self.config = config or BotConfig()
+        logging.getLogger().setLevel(self.config.LOG_LEVEL.upper())
+
+        self.bot = Bot(
+            token=self.config.TG_BOT_TOKEN,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+        )
+        self.forwarder = MessageForwarder(bot=self.bot, config=self.config)
+        self.max_client = MaxClient(
+            token=self.config.MAX_TOKEN,
+            num_workers=self.config.MAX_WORKERS,
+            auto_reconnect=True,
+        )
+        self._stop_event = asyncio.Event()
+
+    def setup_handlers(self) -> None:
+        """Registers MAX event filters and callbacks."""
+
+        # 1. On Connect / Reconnect
+        @self.max_client.on_connect
+        async def on_connect(client: MaxClient):
+            user_info = "Unknown"
+            if client.me:
+                user_info = f"{client.me.display_name} (ID: {client.me.id})"
+            logger.info(f"Connected to MAX as: {user_info}")
+
+            # Notify monitor chat if configured
+            if self.config.MONITOR_ID:
+                try:
+                    await self.bot.send_message(
+                        chat_id=self.config.MONITOR_ID,
+                        text=f"🟢 <b>MAX Forwarder Bot connected</b>\n👤 Пользователь: <code>{html.escape(user_info)}</code>",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send monitor startup notification: {e}")
+
+        # 2. On Incoming Message
+        if self.config.MAX_CHAT_IDS:
+            msg_filter = filters.chat_id(*self.config.MAX_CHAT_IDS) & filters.is_not_removed()
+        else:
+            msg_filter = filters.is_not_removed()
+
+        @self.max_client.on_message(msg_filter)
+        async def handle_message(client: MaxClient, message: Message):
+            try:
+                await self.forwarder.forward_max_message(client, message)
+            except Exception as e:
+                logger.error(f"Error while forwarding message {message.id}: {e}", exc_info=True)
+
+    async def start(self) -> None:
+        """Starts the MAX client and waits for shutdown signal."""
+        self.setup_handlers()
+        logger.info("Starting MAX Forwarder Bot...")
+
+        try:
+            await self.max_client.start()
+            logger.info("MAX Forwarder Bot is running. Press Ctrl+C to stop.")
+            await self._stop_event.wait()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            await self.stop()
+
+    async def stop(self) -> None:
+        """Gracefully terminates client and closes bot session."""
+        logger.info("Stopping MAX Forwarder Bot...")
+        self._stop_event.set()
+
+        try:
+            await self.max_client.close()
+        except Exception as e:
+            logger.warning(f"Error closing max client: {e}")
+
+        try:
+            await self.bot.session.close()
+        except Exception as e:
+            logger.warning(f"Error closing bot session: {e}")
+
+        logger.info("MAX Forwarder Bot stopped.")
+
+
 async def main() -> None:
-    logger.info("Starting MAX to Telegram Forwarder Bot...")
-    logger.info(f"Loaded max-client SDK version: {max_client_version}")
-    # TODO: Initialize MaxClient, Bot, and message forwarder pipeline
-    logger.info("Bot initialized successfully.")
+    try:
+        config = BotConfig()
+    except Exception as e:
+        logger.error(f"Configuration error: {e}")
+        logger.error("Please ensure .env file is configured properly according to .env.example")
+        sys.exit(1)
+
+    app = BotApp(config)
+
+    # Register OS signal handlers for graceful stop
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(app.stop()))
+        except NotImplementedError:
+            # Signal handlers not implemented on Windows event loop for add_signal_handler
+            pass
+
+    try:
+        await app.start()
+    except (KeyboardInterrupt, SystemExit):
+        await app.stop()
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
