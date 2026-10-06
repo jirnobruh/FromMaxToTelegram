@@ -16,6 +16,7 @@ def forwarder():
     bot.send_message = AsyncMock()
     bot.send_photo = AsyncMock()
     bot.send_media_group = AsyncMock()
+    bot.send_document = AsyncMock()
     config = BotConfig(
         MAX_TOKEN="dummy",
         TG_BOT_TOKEN="dummy",
@@ -101,3 +102,62 @@ async def test_forward_with_multiple_photos(forwarder, mock_client):
     # Caption attached to first item in first batch
     assert "<b>Анна</b>" in first_call_media[0].caption
     assert second_call_media[0].caption is None
+
+
+@pytest.mark.asyncio
+async def test_forward_nested_forward_message(forwarder, mock_client):
+    mock_client.get_user.side_effect = [
+        User.model_validate({"id": 1234, "names": [{"name": "Анна"}]}),
+        User.model_validate({"id": 5678, "names": [{"name": "Борис"}]}),
+    ]
+    fwd_payload = {
+        "id": "m4",
+        "chatId": 500,
+        "sender": 1234,
+        "text": "",
+        "link": {
+            "type": "FORWARD",
+            "chatId": 600,
+            "message": {
+                "id": "m4_orig",
+                "sender": 5678,
+                "text": "Оригинальный текст",
+            },
+        },
+    }
+    msg = Message.model_validate(fwd_payload).bind_client(mock_client)
+    await forwarder.forward_max_message(mock_client, msg)
+
+    forwarder.bot.send_message.assert_called_once()
+    text = forwarder.bot.send_message.call_args[1]["text"]
+    assert "<b>Анна</b>" in text
+    assert "Переслано от: Борис" in text
+    assert "Оригинальный текст" in text
+
+
+@pytest.mark.asyncio
+async def test_forward_unhandled_file_attachment(forwarder, mock_client):
+    file_payload = {
+        "id": "m5",
+        "chatId": 500,
+        "sender": 1234,
+        "text": "",
+        "attaches": [
+            {
+                "_type": "FILE",
+                "name": "README.md",
+                "size": 1360,
+                "fileId": 3616615111,
+            }
+        ],
+    }
+    msg = Message.model_validate(file_payload).bind_client(mock_client)
+    mock_client.get_file_download_url = AsyncMock(return_value=None)
+
+    await forwarder.forward_max_message(mock_client, msg)
+
+    forwarder.bot.send_message.assert_called_once()
+    text = forwarder.bot.send_message.call_args[1]["text"]
+    assert "<b>Анна</b>" in text
+    assert "Необработанные файлы:" in text
+    assert "README.md" in text

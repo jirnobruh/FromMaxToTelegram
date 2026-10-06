@@ -5,6 +5,7 @@ import asyncio
 import logging
 from typing import Optional, Union
 
+import aiohttp
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -78,29 +79,50 @@ class MessageForwarder:
             if fwd_msg.attaches and not attaches:
                 attaches = list(fwd_msg.attaches)
 
-        # 4. Separate attachments: Photos vs Other files
+        # 4. Separate attachments: Photos vs Files
         photos: list[Attachment] = []
-        other_files: list[str] = []
+        files_to_process: list[Attachment] = []
+        unhandled_files: list[str] = []
 
         for a in attaches:
-            url = a.url
-            if not url:
-                continue
             if a.is_photo or (a.mime_type and a.mime_type.startswith("image/")):
-                photos.append(a)
+                if a.url:
+                    photos.append(a)
+                else:
+                    files_to_process.append(a)
+            elif a.is_file or a.file_id or a.name or a.url:
+                files_to_process.append(a)
             else:
-                name = a.name or a.type or "file"
-                other_files.append(name)
+                unhandled_files.append(a.name or a.type or "файл")
 
-        # 5. Format formatted text body
+        # 5. Try downloading files
+        downloaded_documents: list[tuple[BufferedInputFile, str]] = []
+        for a in files_to_process:
+            filename = a.name or (f"file_{a.file_id}" if a.file_id else "file")
+            try:
+                download_url = await a.get_download_url(message)
+                if download_url:
+                    doc = await self._download_file_bytes(download_url, filename)
+                    if doc:
+                        downloaded_documents.append((doc, filename))
+                        continue
+            except Exception as e:
+                logger.warning(f"Failed to download attachment {filename}: {e}")
+
+            # If download was impossible or failed
+            unhandled_files.append(filename)
+
+        # 6. Format formatted text body
         formatted_text = format_message_text(
             author_name=author_name,
             text=main_text,
             forward_author_name=forward_author_name,
-            unhandled_files=other_files,
+            unhandled_files=unhandled_files,
         )
 
-        # 6. Deliver to Telegram
+        # 7. Deliver to Telegram
+        caption_used = False
+
         if photos:
             await self._send_photo_batches(
                 tg_chat_id=tg_chat_id,
@@ -108,12 +130,55 @@ class MessageForwarder:
                 photos=photos,
                 formatted_text=formatted_text,
             )
-        else:
+            caption_used = True
+
+        if downloaded_documents:
+            for idx, (doc, filename) in enumerate(downloaded_documents):
+                doc_caption = None
+                parse_mode = None
+                if not caption_used and idx == 0:
+                    doc_caption = truncate_caption(formatted_text)
+                    parse_mode = ParseMode.HTML
+                    caption_used = True
+
+                await self._safe_telegram_call(
+                    self.bot.send_document(
+                        chat_id=tg_chat_id,
+                        message_thread_id=tg_topic_id,
+                        document=doc,
+                        caption=doc_caption,
+                        parse_mode=parse_mode,
+                    )
+                )
+
+        if not caption_used:
             await self._send_text_message(
                 tg_chat_id=tg_chat_id,
                 tg_topic_id=tg_topic_id,
                 formatted_text=formatted_text,
             )
+
+    async def _download_file_bytes(self, url: str, filename: str) -> Optional[BufferedInputFile]:
+        """Downloads file bytes via HTTP with a 50MB safety limit."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    if resp.status == 200:
+                        content_length = resp.headers.get("Content-Length")
+                        if content_length and int(content_length) > 50 * 1024 * 1024:
+                            logger.warning(f"File {filename} exceeds 50MB: {content_length} bytes")
+                            return None
+                        data = await resp.read()
+                        if len(data) > 50 * 1024 * 1024:
+                            logger.warning(f"File {filename} exceeds 50MB after download")
+                            return None
+                        return BufferedInputFile(data, filename=filename)
+                    else:
+                        logger.warning(f"HTTP download failed with status {resp.status} for {url}")
+                        return None
+        except Exception as e:
+            logger.warning(f"Error downloading file {filename} from {url}: {e}")
+            return None
 
     async def _send_text_message(
         self,

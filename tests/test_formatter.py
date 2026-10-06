@@ -38,7 +38,7 @@ def test_format_message_text_full():
     )
     assert "<b>Алексей</b>" in text
     assert "&lt;b&gt;мир&lt;/b&gt;!" in text
-    assert "📁 <b>Прикреплённые файлы:</b>" in text
+    assert "📁 <b>Необработанные файлы:</b>" in text
     assert "<code>document.pdf</code>" in text
     assert "<code>archive.zip</code>" in text
 

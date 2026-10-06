@@ -37,7 +37,7 @@ def format_message_text(
 
     if unhandled_files:
         files_str = ", ".join(f"<code>{escape_html(f)}</code>" for f in unhandled_files)
-        parts.append(f"📁 <b>Прикреплённые файлы:</b> {files_str}")
+        parts.append(f"📁 <b>Необработанные файлы:</b> {files_str}")
 
     return "\n\n".join(parts)
 
