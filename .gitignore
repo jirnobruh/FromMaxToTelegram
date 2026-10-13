@@ -32,3 +32,4 @@ ENV/
 htmlcov/
 *.log
 logs/
+health.json

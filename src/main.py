@@ -1,11 +1,14 @@
-﻿"""
+"""
 Main entrypoint and lifecycle coordinator for MAX to Telegram Bot.
 """
 import asyncio
 import html
+import json
 import logging
+import os
 import signal
 import sys
+import time
 from typing import Optional
 
 from aiogram import Bot
@@ -42,8 +45,11 @@ class BotApp:
             token=self.config.MAX_TOKEN,
             num_workers=self.config.MAX_WORKERS,
             auto_reconnect=True,
+            heartbeat_interval=self.config.MAX_HEARTBEAT_INTERVAL,
+            heartbeat_timeout=self.config.MAX_HEARTBEAT_TIMEOUT,
         )
         self._stop_event = asyncio.Event()
+        self._health_task: Optional[asyncio.Task] = None
 
     def setup_handlers(self) -> None:
         """Registers MAX event filters and callbacks."""
@@ -79,10 +85,36 @@ class BotApp:
             except Exception as e:
                 logger.error(f"Error while forwarding message {message.id}: {e}", exc_info=True)
 
+    async def _health_monitor_loop(self) -> None:
+        """Periodically writes health status to HEALTH_CHECK_FILE for external monitoring."""
+        while not self._stop_event.is_set():
+            try:
+                status = {
+                    "status": "healthy",
+                    "timestamp": time.time(),
+                    "pid": os.getpid(),
+                    "max_connected": self.max_library.is_connected,
+                    "max_logged_in": self.max_library.is_logged_in,
+                }
+                with open(self.config.HEALTH_CHECK_FILE, "w", encoding="utf-8") as f:
+                    json.dump(status, f, indent=2)
+            except Exception as e:
+                logger.debug(f"Failed to write health check file: {e}")
+
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=30.0)
+                break
+            except asyncio.TimeoutError:
+                pass
+
     async def start(self) -> None:
         """Starts the MAX client and waits for shutdown signal."""
         self.setup_handlers()
         logger.info("Starting MAX Forwarder Bot...")
+
+        self._health_task = asyncio.create_task(
+            self._health_monitor_loop(), name="bot_health_monitor"
+        )
 
         try:
             await self.max_library.start()
@@ -97,6 +129,22 @@ class BotApp:
         """Gracefully terminates client and closes bot session."""
         logger.info("Stopping MAX Forwarder Bot...")
         self._stop_event.set()
+
+        if self._health_task and not self._health_task.done():
+            self._health_task.cancel()
+            try:
+                await self._health_task
+            except asyncio.CancelledError:
+                pass
+            self._health_task = None
+
+        # Update health file to reflect stopped status
+        try:
+            if os.path.exists(self.config.HEALTH_CHECK_FILE):
+                with open(self.config.HEALTH_CHECK_FILE, "w", encoding="utf-8") as f:
+                    json.dump({"status": "stopped", "timestamp": time.time(), "pid": os.getpid()}, f, indent=2)
+        except Exception:
+            pass
 
         try:
             await self.max_library.close()

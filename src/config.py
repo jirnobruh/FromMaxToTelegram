@@ -38,6 +38,9 @@ class BotConfig(BaseSettings):
     LOG_LEVEL: str = Field(default="INFO")
     USER_CACHE_TTL: int = Field(default=3600, description="Cache TTL in seconds for user profile names")
     MAX_WORKERS: int = Field(default=4, description="Worker count for processing message push events")
+    MAX_HEARTBEAT_INTERVAL: float = Field(default=45.0, description="Interval in seconds for client-initiated MAX heartbeats")
+    MAX_HEARTBEAT_TIMEOUT: float = Field(default=120.0, description="Max seconds of inactivity before declaring connection dead")
+    HEALTH_CHECK_FILE: str = Field(default="health.json", description="Path to health status file updated periodically")
 
     # Logging settings
     LOGS_DIR: str = Field(default="logs", description="Directory to store session log files")
