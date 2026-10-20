@@ -2,7 +2,7 @@
 Configuration management using pydantic-settings.
 """
 import json
-from typing import Any, Union
+from typing import Any, Optional, Union
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -115,7 +115,7 @@ class BotConfig(BaseSettings):
             return target.tg_chat_id, target.tg_topic_id
         return self.TG_CHAT_ID, self.TG_TOPIC_ID
 
-    def get_chat_override_title(self, max_chat_id: int | str) -> Optional[str]:
+    def get_chat_override_title(self, max_chat_id: int | str) -> str | None:
         """
         Returns manual override chat title if configured in CHAT_MAPPING or CHAT_NAMES.
         """
