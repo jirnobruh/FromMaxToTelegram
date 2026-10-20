@@ -22,3 +22,14 @@ async def test_user_cache_expiration():
     # Small sleep to ensure time passes
     await asyncio.sleep(0.01)
     assert await cache.get(456) is None
+
+
+@pytest.mark.asyncio
+async def test_chat_cache_set_and_get():
+    from src.cache import ChatCache
+    cache = ChatCache(ttl=10)
+    await cache.set("-100500", "Новости компании")
+    assert await cache.get(-100500) == "Новости компании"
+    assert await cache.get("-100500") == "Новости компании"
+    assert await cache.get(999) is None
+

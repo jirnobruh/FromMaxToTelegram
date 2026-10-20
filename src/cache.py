@@ -6,43 +6,61 @@ import time
 from typing import Optional
 
 
-class UserCacheEntry:
-    def __init__(self, display_name: str, expire_at: float):
-        self.display_name = display_name
+class CacheEntry:
+    def __init__(self, value: str, expire_at: float):
+        self.value = value
         self.expire_at = expire_at
 
     @property
     def is_expired(self) -> bool:
         return time.time() > self.expire_at
 
+    @property
+    def display_name(self) -> str:
+        return self.value
 
-class UserCache:
-    """In-memory thread-safe user cache with TTL."""
+
+UserCacheEntry = CacheEntry
+
+
+class AsyncTTLCache:
+    """In-memory thread-safe generic cache with TTL."""
 
     def __init__(self, ttl: int = 3600):
         self.ttl = ttl
-        self._cache: dict[str, UserCacheEntry] = {}
+        self._cache: dict[str, CacheEntry] = {}
         self._lock = asyncio.Lock()
 
-    async def get(self, user_id: int | str) -> Optional[str]:
-        key = str(user_id)
+    async def get(self, key: int | str) -> Optional[str]:
+        k = str(key)
         async with self._lock:
-            entry = self._cache.get(key)
+            entry = self._cache.get(k)
             if entry is None:
                 return None
             if entry.is_expired:
-                del self._cache[key]
+                del self._cache[k]
                 return None
-            return entry.display_name
+            return entry.value
 
-    async def set(self, user_id: int | str, display_name: str) -> None:
-        key = str(user_id)
+    async def set(self, key: int | str, value: str) -> None:
+        k = str(key)
         async with self._lock:
-            self._cache[key] = UserCacheEntry(
-                display_name=display_name,
+            self._cache[k] = CacheEntry(
+                value=value,
                 expire_at=time.time() + self.ttl,
             )
 
     async def clear(self) -> None:
         async with self._lock:
             self._cache.clear()
+
+
+class UserCache(AsyncTTLCache):
+    """In-memory thread-safe user display name cache with TTL."""
+    pass
+
+
+class ChatCache(AsyncTTLCache):
+    """In-memory thread-safe chat title cache with TTL."""
+    pass
+

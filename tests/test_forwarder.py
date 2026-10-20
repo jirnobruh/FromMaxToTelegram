@@ -1,11 +1,11 @@
-﻿"""
+"""
 Unit tests for MessageForwarder orchestration logic.
 """
 from unittest.mock import AsyncMock, MagicMock
 import pytest
 from max_library import MaxClient
-from max_library.models import Attachment, Message, MessageLink, User
-from src.cache import UserCache
+from max_library.models import Attachment, Chat, Message, MessageLink, User
+from src.cache import ChatCache, UserCache
 from src.config import BotConfig
 from src.forwarder import MessageForwarder
 
@@ -23,8 +23,9 @@ def forwarder():
         TG_CHAT_ID=-100111,
         TG_TOPIC_ID=15,
     )
-    cache = UserCache(ttl=60)
-    return MessageForwarder(bot=bot, config=config, user_cache=cache)
+    user_cache = UserCache(ttl=60)
+    chat_cache = ChatCache(ttl=60)
+    return MessageForwarder(bot=bot, config=config, user_cache=user_cache, chat_cache=chat_cache)
 
 
 @pytest.fixture
@@ -32,6 +33,9 @@ def mock_client():
     client = MagicMock(spec=MaxClient)
     client.get_user = AsyncMock(
         return_value=User.model_validate({"id": 1234, "names": [{"name": "Анна"}]})
+    )
+    client.get_chat = AsyncMock(
+        return_value=Chat.model_validate({"id": 500, "title": "Общий Чат", "type": "CHAT"})
     )
     return client
 
@@ -51,8 +55,10 @@ async def test_forward_plain_text(forwarder, mock_client):
     call_args = forwarder.bot.send_message.call_args[1]
     assert call_args["chat_id"] == -100111
     assert call_args["message_thread_id"] == 15
+    assert "💬 <b>Общий Чат</b>" in call_args["text"]
     assert "<b>Анна</b>" in call_args["text"]
     assert "Привет всем!" in call_args["text"]
+
 
 
 @pytest.mark.asyncio
@@ -161,3 +167,22 @@ async def test_forward_unhandled_file_attachment(forwarder, mock_client):
     assert "<b>Анна</b>" in text
     assert "Необработанные файлы:" in text
     assert "README.md" in text
+
+
+@pytest.mark.asyncio
+async def test_forward_chat_override_and_cache(forwarder, mock_client):
+    forwarder.config.CHAT_NAMES = {"500": "Кастомный Чат IT"}
+
+    msg = Message(
+        id="m6",
+        chatId=500,
+        sender=1234,
+        text="Тест кастомного имени",
+    )
+    await forwarder.forward_max_message(mock_client, msg)
+
+    forwarder.bot.send_message.assert_called_once()
+    text = forwarder.bot.send_message.call_args[1]["text"]
+    assert "💬 <b>Кастомный Чат IT</b>" in text
+    assert "<b>Анна</b>" in text
+

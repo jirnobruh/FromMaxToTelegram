@@ -58,3 +58,22 @@ def test_config_destination_with_mapping():
     c3, t3 = cfg.get_destination("300")
     assert c3 == -100111
     assert t3 == 10
+
+
+def test_config_chat_override_title():
+    cfg = BotConfig(
+        MAX_TOKEN="token",
+        TG_BOT_TOKEN="tg_token",
+        TG_CHAT_ID=-100111,
+        CHAT_MAPPING={
+            "100": {"tg_chat_id": -100222, "chat_name": "Канал новостей"},
+        },
+        CHAT_NAMES={
+            "200": "Общий флуд",
+        },
+    )
+    assert cfg.get_chat_override_title("100") == "Канал новостей"
+    assert cfg.get_chat_override_title(100) == "Канал новостей"
+    assert cfg.get_chat_override_title("200") == "Общий флуд"
+    assert cfg.get_chat_override_title("300") is None
+

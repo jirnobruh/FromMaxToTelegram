@@ -1,4 +1,4 @@
-﻿"""
+"""
 Message forwarder service coordinating MAX messages into Telegram.
 """
 import asyncio
@@ -14,7 +14,7 @@ from aiogram.types import BufferedInputFile, InputMediaPhoto, URLInputFile
 
 from max_library import MaxClient
 from max_library.models import Attachment, Message
-from src.cache import UserCache
+from src.cache import ChatCache, UserCache
 from src.config import BotConfig
 from src.formatter import (
     escape_html,
@@ -31,10 +31,17 @@ logger = logging.getLogger("max-to-tg-bot.forwarder")
 class MessageForwarder:
     """Handles parsing and delivering MAX messages to target Telegram chats/topics."""
 
-    def __init__(self, bot: Bot, config: BotConfig, user_cache: Optional[UserCache] = None):
+    def __init__(
+        self,
+        bot: Bot,
+        config: BotConfig,
+        user_cache: Optional[UserCache] = None,
+        chat_cache: Optional[ChatCache] = None,
+    ):
         self.bot = bot
         self.config = config
         self.user_cache = user_cache or UserCache(ttl=config.USER_CACHE_TTL)
+        self.chat_cache = chat_cache or ChatCache(ttl=config.CHAT_CACHE_TTL)
 
     async def get_user_display_name(self, client: MaxClient, user_id: Union[int, str, None]) -> str:
         """Resolves user display name with caching to minimize WebSocket lookups."""
@@ -56,14 +63,42 @@ class MessageForwarder:
             await self.user_cache.set(user_id, fallback)
             return fallback
 
+    async def get_chat_display_name(self, client: MaxClient, chat_id: Union[int, str, None]) -> str:
+        """Resolves chat title with override check, caching and MAX client lookup."""
+        if not chat_id:
+            return "Неизвестный чат"
+
+        # 1. Config manual override (CHAT_MAPPING or CHAT_NAMES)
+        override = self.config.get_chat_override_title(chat_id)
+        if override:
+            return override
+
+        # 2. In-memory cache
+        cached = await self.chat_cache.get(chat_id)
+        if cached:
+            return cached
+
+        # 3. Query MAX client
+        try:
+            chat = await client.get_chat(chat_id)
+            title = chat.display_name
+            await self.chat_cache.set(chat_id, title)
+            return title
+        except Exception as e:
+            logger.warning(f"Failed to fetch chat title for id {chat_id}: {e}")
+            fallback = f"Чат {chat_id}"
+            await self.chat_cache.set(chat_id, fallback)
+            return fallback
+
     async def forward_max_message(self, client: MaxClient, message: Message) -> None:
         """Main pipeline to process and send a MAX message into Telegram."""
         # 1. Determine destination Telegram chat & topic
         tg_chat_id, tg_topic_id = self.config.get_destination(message.chat_id)
         logger.info(f"Forwarding MAX message {message.id} from chat {message.chat_id} -> TG {tg_chat_id} (topic {tg_topic_id})")
 
-        # 2. Extract author name
+        # 2. Extract author name and chat title
         author_name = await self.get_user_display_name(client, message.sender)
+        chat_title = await self.get_chat_display_name(client, message.chat_id)
 
         # 3. Handle forwarded/replied message content
         forward_author_name: Optional[str] = None
@@ -118,6 +153,7 @@ class MessageForwarder:
             text=main_text,
             forward_author_name=forward_author_name,
             unhandled_files=unhandled_files,
+            chat_title=chat_title,
         )
 
         # 7. Deliver to Telegram

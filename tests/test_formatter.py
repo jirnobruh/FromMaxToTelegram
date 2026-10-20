@@ -29,6 +29,16 @@ def test_format_author_header_with_forward():
     assert header == "<b>Иван</b> <i>(Переслано от: Пётр &amp; Co)</i>"
 
 
+def test_format_author_header_with_chat_title():
+    header = format_author_header("Иван", chat_title="Рабочая Группа <IT>")
+    assert header == "💬 <b>Рабочая Группа &lt;IT&gt;</b>\n<b>Иван</b>"
+
+    # With both chat_title and forward
+    header_fwd = format_author_header("Иван", forward_author_name="Пётр", chat_title="Новости")
+    assert header_fwd == "💬 <b>Новости</b>\n<b>Иван</b> <i>(Переслано от: Пётр)</i>"
+
+
+
 def test_format_message_text_full():
     text = format_message_text(
         author_name="Алексей",

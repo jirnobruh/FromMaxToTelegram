@@ -1,4 +1,4 @@
-﻿"""
+"""
 Message formatting and HTML escaping utilities for Telegram.
 """
 import html
@@ -13,13 +13,23 @@ def escape_html(text: Optional[str]) -> str:
     return html.escape(str(text))
 
 
-def format_author_header(author_name: str, forward_author_name: Optional[str] = None) -> str:
-    """Formats HTML author header with optional forward information."""
+def format_author_header(
+    author_name: str,
+    forward_author_name: Optional[str] = None,
+    chat_title: Optional[str] = None,
+) -> str:
+    """Formats HTML author header with optional chat title and forward information."""
     safe_author = escape_html(author_name or "Unknown")
     if forward_author_name:
         safe_fwd = escape_html(forward_author_name)
-        return f"<b>{safe_author}</b> <i>(Переслано от: {safe_fwd})</i>"
-    return f"<b>{safe_author}</b>"
+        author_line = f"<b>{safe_author}</b> <i>(Переслано от: {safe_fwd})</i>"
+    else:
+        author_line = f"<b>{safe_author}</b>"
+
+    if chat_title and chat_title.strip():
+        safe_chat = escape_html(chat_title.strip())
+        return f"💬 <b>{safe_chat}</b>\n{author_line}"
+    return author_line
 
 
 def format_message_text(
@@ -27,9 +37,10 @@ def format_message_text(
     text: Optional[str],
     forward_author_name: Optional[str] = None,
     unhandled_files: Optional[list[str]] = None,
+    chat_title: Optional[str] = None,
 ) -> str:
-    """Formats complete HTML message text including author, body and unhandled files."""
-    header = format_author_header(author_name, forward_author_name)
+    """Formats complete HTML message text including chat title, author, body and unhandled files."""
+    header = format_author_header(author_name, forward_author_name, chat_title=chat_title)
     parts = [header]
 
     if text and text.strip():
