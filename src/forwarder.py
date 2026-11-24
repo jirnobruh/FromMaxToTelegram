@@ -125,7 +125,7 @@ class MessageForwarder:
                     photos.append(a)
                 else:
                     files_to_process.append(a)
-            elif a.is_file or a.file_id or a.name or a.url:
+            elif a.is_file or a.is_video or getattr(a, "file_id", None) or getattr(a, "video_id", None) or a.name or a.url:
                 files_to_process.append(a)
             else:
                 unhandled_files.append(a.name or a.type or "файл")
@@ -133,9 +133,13 @@ class MessageForwarder:
         # 5. Try downloading files
         downloaded_documents: list[tuple[BufferedInputFile, str]] = []
         for a in files_to_process:
-            filename = a.name or (f"file_{a.file_id}" if a.file_id else "file")
+            filename = a.name
+            if not filename:
+                fid = getattr(a, "file_id", None) or getattr(a, "video_id", None) or "file"
+                ext = ".mp4" if a.is_video else ""
+                filename = f"file_{fid}{ext}"
             try:
-                download_url = await a.get_download_url(message)
+                download_url = await a.get_download_url(message, client=client)
                 if download_url:
                     doc = await self._download_file_bytes(download_url, filename)
                     if doc:
@@ -196,9 +200,13 @@ class MessageForwarder:
 
     async def _download_file_bytes(self, url: str, filename: str) -> Optional[BufferedInputFile]:
         """Downloads file bytes via HTTP with a 50MB safety limit."""
+        headers = {
+            "Origin": "https://web.max.ru",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        }
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
                     if resp.status == 200:
                         content_length = resp.headers.get("Content-Length")
                         if content_length and int(content_length) > 50 * 1024 * 1024:

@@ -186,3 +186,35 @@ async def test_forward_chat_override_and_cache(forwarder, mock_client):
     assert "💬 <b>Кастомный Чат IT</b>" in text
     assert "<b>Анна</b>" in text
 
+
+@pytest.mark.asyncio
+async def test_forward_successful_file_download(forwarder, mock_client):
+    file_payload = {
+        "id": "m7",
+        "chatId": 500,
+        "sender": 1234,
+        "text": "Вот документ",
+        "attaches": [
+            {
+                "_type": "FILE",
+                "name": "лекция.pdf",
+                "size": 5000,
+                "fileId": 1234567,
+            }
+        ],
+    }
+    msg = Message.model_validate(file_payload).bind_client(mock_client)
+    mock_client.get_file_download_url = AsyncMock(return_value="https://fd.oneme.ru/getfile?rq=test")
+    forwarder._download_file_bytes = AsyncMock(
+        return_value=MagicMock(filename="лекция.pdf")
+    )
+
+    await forwarder.forward_max_message(mock_client, msg)
+
+    forwarder.bot.send_document.assert_called_once()
+    call_args = forwarder.bot.send_document.call_args[1]
+    assert call_args["chat_id"] == -100111
+    assert call_args["message_thread_id"] == 15
+    assert "Вот документ" in call_args["caption"]
+
+
