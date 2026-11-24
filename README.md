@@ -101,7 +101,7 @@ pip install -r requirements.txt
 9. В нижней панели предпросмотра пакета переключите режим с *Hex Viewer* / *Base64* на **`UTF-8`**.
 10. В тексте найдите поле `token`: сразу за ним между двумя служебными знаками-ромбами `` (символы разделителей) расположен ваш токен:
     ```text
-    ...tokenAn_Sx6HQ9HDis041Na5Rpvyb3z8WeP2dnm9......
+    ...tokenAn_EXAMPLE_TOKEN_AbCdEf0123456789_xYz......
     ```
 11. Скопируйте сам токен (строку `An_...` без окружающих символов ``) и укажите его в переменной `MAX_TOKEN`.
 
@@ -111,7 +111,7 @@ pip install -r requirements.txt
 
 ```ini
 # Авторизационный токен мессенджера MAX (полученный по инструкции выше)
-MAX_TOKEN=An_Sx6HQ9HDis041Na5Rpvyb3z8WeP2dnm9...
+MAX_TOKEN=An_EXAMPLE_TOKEN_AbCdEf0123456789_xYz...
 
 # Список отслеживаемых чатов MAX (ID через запятую или JSON-массив)
 MAX_CHAT_IDS=123456789,987654321
